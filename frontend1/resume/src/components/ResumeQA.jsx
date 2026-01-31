@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { resumeAPI } from '../services/api';
-import './ResumeQA.css';
 
 function ResumeQA() {
   const [question, setQuestion] = useState('');

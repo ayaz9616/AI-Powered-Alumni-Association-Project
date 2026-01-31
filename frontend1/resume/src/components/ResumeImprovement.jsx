@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { resumeAPI } from '../services/api';
-import './ResumeImprovement.css';
 
 function ResumeImprovement() {
   const [focusAreas, setFocusAreas] = useState('');

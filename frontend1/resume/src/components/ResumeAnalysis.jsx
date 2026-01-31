@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { resumeAPI } from '../services/api';
-import './ResumeAnalysis.css';
 
 function ResumeAnalysis() {
   const [formData, setFormData] = useState({

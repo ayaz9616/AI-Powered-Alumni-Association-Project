@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { settingsAPI } from '../services/api';
-import './Settings.css';
 
 function Settings() {
   const [settings, setSettings] = useState({

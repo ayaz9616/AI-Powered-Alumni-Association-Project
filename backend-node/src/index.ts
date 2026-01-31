@@ -10,6 +10,12 @@ import resumeRoutes from './routes/resume.routes';
 import interviewRoutes from './routes/interview.routes';
 import jobRoutes from './routes/job.routes';
 import settingsRoutes from './routes/settings.routes';
+import mentorshipRoutes from './routes/mentorship.routes';
+import jobsRoutes from './routes/jobs.routes';
+import sessionRoutes from './routes/session.routes';
+import adminRoutes from './routes/admin.routes';
+import communityRoutes from './routes/community.routes';
+import alumniRoutes from './routes/alumni.routes';
 import { errorHandler } from './middleware/error.middleware';
 
 // Load environment variables
@@ -48,7 +54,7 @@ const corsOptions: CorsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id']
 };
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
@@ -58,9 +64,9 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // Health check
 app.get('/', (_req, res) => {
   res.json({
-    name: 'ResuMate API',
-    version: '1.0.0',
-    description: 'AI-Powered Resume Tracking and Mock Interview System',
+    name: 'ResuMate API - Alumni Mentorship Platform',
+    version: '2.0.0',
+    description: 'AI-Powered Resume Tracking, Mock Interview & Alumni-Student Mentorship System',
     docs: '/api/docs',
     status: 'healthy',
     features: [
@@ -68,7 +74,11 @@ app.get('/', (_req, res) => {
       'AI-Powered Resume Improvement',
       'Mock Interview with Q&A',
       'Job Search Integration',
-      'Smart Recommendations'
+      'Smart Recommendations',
+      '🆕 AI-Driven Alumni-Student Mentorship',
+      '🆕 Intelligent Mentor Matching',
+      '🆕 Session Scheduling & Feedback',
+      '🆕 Admin Analytics Dashboard'
     ]
   });
 });
@@ -87,23 +97,25 @@ app.use('/api/resume', resumeRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/mentorship', mentorshipRoutes);
+app.use('/api/mentorship/jobs', jobsRoutes);
+app.use('/api/mentorship', sessionRoutes);
+app.use('/api/mentorship', adminRoutes);
+app.use('/api/community', communityRoutes);
+app.use('/api/alumni', alumniRoutes);
 
 // Error handling
 app.use(errorHandler);
 
-// MongoDB Connection
-mongoose.connect(EFFECTIVE_MONGO_URI, { dbName: DB_NAME })
-  .then(() => {
-    console.log('✅ MongoDB connected successfully!');
-    
-    // Start server
-    app.listen(PORT, () => {
-      console.log(`
+// Start server first (don't wait for MongoDB)
+app.listen(PORT, () => {
+  console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║                                                          ║
-║          🤖 ResuMate Node.js Backend v1.0.0             ║
+║          🤖 ResuMate Node.js Backend v2.0.0             ║
 ║                                                          ║
 ║  AI-Powered Resume Tracking & Mock Interview System      ║
+║  🆕 + Alumni-Student Mentorship Platform                ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
 
@@ -111,29 +123,40 @@ mongoose.connect(EFFECTIVE_MONGO_URI, { dbName: DB_NAME })
 🌐 Health Check: http://localhost:${PORT}/api/health
 
 Features:
-✅ Resume Upload & Analysis
+✅ Resume Upload & Analysis (n8n parsing + LangChain AI)
 ✅ AI-Powered Resume Improvement
 ✅ Mock Interview with Q&A
 ✅ Job Search Integration
 ✅ Smart Recommendations
+🆕 Alumni-Student Mentorship Platform
+🆕 Intelligent Mentor Matching (LangChain)
+🆕 Session Scheduling & Feedback
+🆕 Admin Analytics Dashboard
+🆕 Role-Based Authentication (Student/Alumni/Admin)
 
 Server is running...
-      `);
-    });
+Connecting to MongoDB...
+  `);
+});
+
+// MongoDB Connection (async, non-blocking)
+mongoose.connect(EFFECTIVE_MONGO_URI, { dbName: DB_NAME })
+  .then(() => {
+    console.log('✅ MongoDB connected successfully!');
   })
   .catch((error) => {
-    console.error('❌ MongoDB connection failed:', error);
-    console.error('ℹ️ Ensure MONGO_URI is set to a valid connection string (mongodb:// or mongodb+srv://).');
-    console.error('   Example local URI:', DEFAULT_MONGO_URI);
-    console.error('   Using dbName:', DB_NAME);
-    process.exit(1);
+    console.error('❌ MongoDB connection failed:', error.message);
+    console.error('⚠️  Server running WITHOUT database. Mentorship features will not work.');
+    console.error('ℹ️  Fix: Add your IP to MongoDB Atlas Network Access whitelist');
   });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('👋 SIGTERM signal received: closing HTTP server');
-  mongoose.connection.close();
+  mongoose.connection.close(false);
   process.exit(0);
 });
 
 export default app;
+
+

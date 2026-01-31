@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { jobsAPI } from '../services/api';
-import './JobSearch.css';
 
 function JobSearch() {
   const [formData, setFormData] = useState({

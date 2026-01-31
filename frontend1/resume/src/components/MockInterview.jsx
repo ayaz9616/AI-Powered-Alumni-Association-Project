@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { interviewAPI } from '../services/api';
-import './MockInterview.css';
 
 function MockInterview() {
   const [step, setStep] = useState('setup'); // setup, interview, summary

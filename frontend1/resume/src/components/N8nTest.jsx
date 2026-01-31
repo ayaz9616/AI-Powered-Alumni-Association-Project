@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
 import { getUserId } from '../lib/userIdManager';
-import './ResumeUpload.css';
 
 // Direct webhook URLs (n8n cloud instance)
 const WEBHOOK_PROD = 'https://identityforgestudio.app.n8n.cloud/webhook/a38ed656-03ad-43a5-ad5a-a9a4b6e9b7d9';

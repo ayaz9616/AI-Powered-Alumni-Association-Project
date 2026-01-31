@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { resumeAPI } from '../services/api';
-import './ResumeUpload.css';
 
 function ResumeUpload({ onUploadSuccess }) {
   const [file, setFile] = useState(null);
