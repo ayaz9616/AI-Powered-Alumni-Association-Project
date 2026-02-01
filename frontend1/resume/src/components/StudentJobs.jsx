@@ -22,6 +22,11 @@ function StudentJobs() {
     branch: ''
   });
   const [selectedJob, setSelectedJob] = useState(null);
+  const [showResumeModal, setShowResumeModal] = useState(false);
+  const [resumeUrl, setResumeUrl] = useState('');
+  const [resumeFile, setResumeFile] = useState(null);
+  const [uploadType, setUploadType] = useState('url'); // 'url' or 'file'
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     loadJobs();
@@ -273,18 +278,11 @@ function StudentJobs() {
               <div className="flex gap-3 pt-6 border-t border-white/10">
                 <button
                   className="flex-1 bg-gradient-to-r from-green-500 to-green-600 rounded-full py-2.5 font-medium hover:opacity-90 transition"
-                  onClick={async () => {
-                    try {
-                      await markJobInterest(selectedJob.jobId);
-                      alert('Interest recorded! The alumni will see your profile.');
-                    } catch (err) {
-                      const msg = err?.response?.data?.error || 'Failed to record interest';
-                      const reasons = err?.response?.data?.reasons;
-                      alert(reasons && reasons.length > 0 ? `${msg}:\n- ${reasons.join('\n- ')}` : msg);
-                    }
+                  onClick={() => {
+                    setShowResumeModal(true);
                   }}
                 >
-                  Express Interest
+                  Apply Now
                 </button>
                 <button
                   onClick={() => setSelectedJob(null)}
@@ -293,6 +291,143 @@ function StudentJobs() {
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resume Upload Modal */}
+      {showResumeModal && selectedJob && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-neutral-950 border border-white/10 rounded-2xl p-8 w-full max-w-md">
+            <h3 className="text-xl font-medium mb-4">Submit Your Resume</h3>
+            <p className="text-sm text-neutral-400 mb-6">
+              Upload your resume to complete your application for <span className="text-white font-medium">{selectedJob.title}</span>
+            </p>
+            
+            {/* Toggle between URL and File Upload */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setUploadType('url')}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm transition ${
+                  uploadType === 'url'
+                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                    : 'bg-neutral-900 text-neutral-400 border border-white/10 hover:border-white/20'
+                }`}
+              >
+                Enter URL
+              </button>
+              <button
+                onClick={() => setUploadType('file')}
+                className={`flex-1 py-2 px-4 rounded-lg text-sm transition ${
+                  uploadType === 'file'
+                    ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                    : 'bg-neutral-900 text-neutral-400 border border-white/10 hover:border-white/20'
+                }`}
+              >
+                Upload File
+              </button>
+            </div>
+
+            {uploadType === 'url' ? (
+              <input
+                type="url"
+                placeholder="https://drive.google.com/... or your resume URL"
+                value={resumeUrl}
+                onChange={(e) => setResumeUrl(e.target.value)}
+                className={inputClass + " mb-6"}
+              />
+            ) : (
+              <div className="mb-6">
+                <label className="block w-full">
+                  <div className={`${inputClass} cursor-pointer hover:border-green-500/50 flex items-center justify-between`}>
+                    <span className={resumeFile ? 'text-white' : 'text-neutral-500'}>
+                      {resumeFile ? resumeFile.name : 'Choose PDF file...'}
+                    </span>
+                    <span className="text-xs text-green-400">Browse</span>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > 5 * 1024 * 1024) {
+                          alert('File size must be less than 5MB');
+                          return;
+                        }
+                        setResumeFile(file);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </label>
+                {resumeFile && (
+                  <p className="text-xs text-neutral-500 mt-2">
+                    {(resumeFile.size / 1024).toFixed(2)} KB
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                className="flex-1 bg-gradient-to-r from-green-500 to-green-600 rounded-full py-2.5 font-medium hover:opacity-90 transition disabled:opacity-50"
+                disabled={uploading}
+                onClick={async () => {
+                  if (uploadType === 'url' && !resumeUrl.trim()) {
+                    alert('Please provide a resume URL');
+                    return;
+                  }
+                  if (uploadType === 'file' && !resumeFile) {
+                    alert('Please select a file');
+                    return;
+                  }
+
+                  setUploading(true);
+                  try {
+                    let finalResumeUrl = resumeUrl;
+
+                    if (uploadType === 'file' && resumeFile) {
+                      // For now, use a placeholder. In production, upload to cloud storage
+                      // This creates a local object URL that won't work across sessions
+                      // You should implement proper file upload to S3/Cloudinary/etc.
+                      const objectUrl = URL.createObjectURL(resumeFile);
+                      finalResumeUrl = `File: ${resumeFile.name} (${(resumeFile.size / 1024).toFixed(2)} KB)`;
+                      alert('Note: File upload is for demo. In production, files should be uploaded to cloud storage (S3, Cloudinary, etc.). For now, please use a URL from Google Drive or Dropbox.');
+                      setUploading(false);
+                      return;
+                    }
+
+                    await markJobInterest(selectedJob.jobId, finalResumeUrl);
+                    alert('Application submitted successfully! The alumni will review your profile.');
+                    setShowResumeModal(false);
+                    setResumeUrl('');
+                    setResumeFile(null);
+                    setSelectedJob(null);
+                  } catch (err) {
+                    console.error('Application error:', err);
+                    const msg = err?.response?.data?.error || err?.message || 'Failed to submit application';
+                    const reasons = err?.response?.data?.reasons;
+                    alert(reasons && reasons.length > 0 ? `${msg}:\n- ${reasons.join('\n- ')}` : msg);
+                  } finally {
+                    setUploading(false);
+                  }
+                }}
+              >
+                {uploading ? 'Uploading...' : 'Submit Application'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowResumeModal(false);
+                  setResumeUrl('');
+                  setResumeFile(null);
+                }}
+                className="flex-1 rounded-full border border-white/10 py-2.5 text-white hover:bg-white/5 transition"
+                disabled={uploading}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

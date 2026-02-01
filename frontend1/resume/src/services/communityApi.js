@@ -357,6 +357,43 @@ export const voteOnSession = async (sessionId) => {
   }
 };
 
+export const updateSessionRequest = async (sessionId, topic, description) => {
+  try {
+    const userId = getUserId();
+    const response = await axios.put(
+      `${API_URL}/session-requests/${sessionId}`,
+      { topic, description },
+      {
+        headers: {
+          'x-user-id': userId
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error updating session request:', error);
+    throw error;
+  }
+};
+
+export const deleteSessionRequest = async (sessionId) => {
+  try {
+    const userId = getUserId();
+    const response = await axios.delete(
+      `${API_URL}/session-requests/${sessionId}`,
+      {
+        headers: {
+          'x-user-id': userId
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting session request:', error);
+    throw error;
+  }
+};
+
 export const scheduleSession = async (sessionId, scheduleDetails) => {
   try {
     const { userId, userName } = getUserData();

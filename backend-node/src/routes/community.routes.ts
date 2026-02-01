@@ -729,6 +729,94 @@ router.post('/session-requests/create', async (req: Request, res: Response) => {
   }
 });
 
+// Update session request (only by proposer)
+router.put('/session-requests/:sessionId', async (req: Request, res: Response) => {
+  try {
+    const userId = req.headers['x-user-id'] as string;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User authentication required' });
+    }
+
+    const { sessionId } = req.params;
+    const { topic, description } = req.body;
+
+    if (!topic || !description) {
+      return res.status(400).json({ success: false, message: 'Topic and description are required' });
+    }
+
+    const session = await SessionRequest.findOne({ sessionId });
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Session request not found' });
+    }
+
+    // Check if the user is the proposer
+    if (session.proposedById !== userId) {
+      return res.status(403).json({ success: false, message: 'You can only edit your own session requests' });
+    }
+
+    // Don't allow editing already scheduled sessions
+    if (session.status === 'scheduled') {
+      return res.status(400).json({ success: false, message: 'Cannot edit scheduled sessions' });
+    }
+
+    session.topic = topic;
+    session.description = description;
+    session.updatedAt = new Date();
+    await session.save();
+
+    res.json({
+      success: true,
+      message: 'Session request updated successfully',
+      session: {
+        id: session.sessionId,
+        sessionId: session.sessionId,
+        topic: session.topic,
+        description: session.description,
+        votes: session.votes.length,
+        status: session.status,
+        votesList: session.votes
+      }
+    });
+  } catch (error: any) {
+    console.error('Error updating session request:', error);
+    res.status(500).json({ success: false, message: 'Failed to update session request', error: error.message });
+  }
+});
+
+// Delete session request (only by proposer)
+router.delete('/session-requests/:sessionId', async (req: Request, res: Response) => {
+  try {
+    const userId = req.headers['x-user-id'] as string;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User authentication required' });
+    }
+
+    const { sessionId } = req.params;
+
+    const session = await SessionRequest.findOne({ sessionId });
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Session request not found' });
+    }
+
+    // Check if the user is the proposer
+    if (session.proposedById !== userId) {
+      return res.status(403).json({ success: false, message: 'You can only delete your own session requests' });
+    }
+
+    // Don't allow deleting already scheduled sessions
+    if (session.status === 'scheduled') {
+      return res.status(400).json({ success: false, message: 'Cannot delete scheduled sessions' });
+    }
+
+    await SessionRequest.deleteOne({ sessionId });
+
+    res.json({ success: true, message: 'Session request deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting session request:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete session request', error: error.message });
+  }
+});
+
 // Vote on session request
 router.post('/session-requests/:sessionId/vote', async (req: Request, res: Response) => {
   try {

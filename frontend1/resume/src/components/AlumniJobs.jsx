@@ -42,6 +42,13 @@ function AlumniJobs() {
   const [showJobReferralsModal, setShowJobReferralsModal] = useState(false);
   const [jobPendingReferrals, setJobPendingReferrals] = useState([]);
 
+  const [applicantFilters, setApplicantFilters] = useState({
+    search: '',
+    minMatchScore: 0,
+    branch: '',
+    minCGPA: ''
+  });
+
   const [form, setForm] = useState({
     title: '',
     company: '',
@@ -197,6 +204,8 @@ function AlumniJobs() {
         studentId: item.studentId,
         matchScore: item.matchScore,
         matchReasons: item.matchReasons,
+        resumeUrl: item.resumeUrl,
+        appliedAt: item.appliedAt,
         student: item.student
       }));
       setMatchedStudents(matches);
@@ -206,6 +215,77 @@ function AlumniJobs() {
     } finally {
       setMatchingStudents(false);
     }
+  };
+
+  const filteredApplicants = matchedStudents.filter(match => {
+    const student = match.student;
+    if (!student) return false;
+
+    if (applicantFilters.search) {
+      const search = applicantFilters.search.toLowerCase();
+      if (!student.name?.toLowerCase().includes(search) && 
+          !student.email?.toLowerCase().includes(search)) {
+        return false;
+      }
+    }
+
+    if (applicantFilters.minMatchScore > 0 && match.matchScore < applicantFilters.minMatchScore) {
+      return false;
+    }
+
+    if (applicantFilters.branch && student.branch !== applicantFilters.branch) {
+      return false;
+    }
+
+    if (applicantFilters.minCGPA) {
+      const cgpa = parseFloat(student.cgpa || '0');
+      if (cgpa < parseFloat(applicantFilters.minCGPA)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  const exportToCSV = () => {
+    if (filteredApplicants.length === 0) {
+      alert('No applicants to export');
+      return;
+    }
+
+    const headers = ['Name', 'Email', 'Branch', 'Batch', 'CGPA', 'Match Score', 'Skills', 'LinkedIn', 'GitHub', 'Portfolio', 'Resume URL', 'Applied At'];
+    const rows = filteredApplicants.map(match => {
+      const s = match.student;
+      return [
+        s.name || '',
+        s.email || '',
+        s.branch || '',
+        s.batch || '',
+        s.cgpa || '',
+        match.matchScore.toFixed(2),
+        (s.skills || []).join('; '),
+        s.linkedIn || '',
+        s.github || '',
+        s.portfolioUrl || '',
+        match.resumeUrl || '',
+        match.appliedAt ? new Date(match.appliedAt).toLocaleDateString() : ''
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${selectedJob?.title || 'job'}_applicants_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const toggleStudentSelection = (studentId) => {
@@ -668,7 +748,7 @@ function AlumniJobs() {
           <div className="bg-neutral-950 border border-white/10 rounded-2xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto my-8">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h2 className="text-2xl font-medium">Interested Students</h2>
+                <h2 className="text-2xl font-medium">Applicants</h2>
                 <p className="text-sm text-neutral-400 mt-1">{selectedJob.title} at {selectedJob.company}</p>
               </div>
               <button
@@ -676,6 +756,7 @@ function AlumniJobs() {
                   setShowMatchModal(false);
                   setSelectedStudents([]);
                   setReferralNotes('');
+                  setApplicantFilters({ search: '', minMatchScore: 0, branch: '', minCGPA: '' });
                 }}
                 className="text-neutral-500 hover:text-white transition"
               >
@@ -686,28 +767,62 @@ function AlumniJobs() {
             {matchingStudents ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto"></div>
-                <p className="text-neutral-500 mt-4">Loading interested students...</p>
+                <p className="text-neutral-500 mt-4">Loading applicants...</p>
               </div>
             ) : matchedStudents.length === 0 ? (
               <div className="text-center py-12 border border-white/10 rounded-xl bg-neutral-950">
-                <p className="text-neutral-500 text-sm">No students have expressed interest yet.</p>
+                <p className="text-neutral-500 text-sm">No applications received yet.</p>
               </div>
             ) : (
               <>
+                {/* Filters */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 p-4 bg-black/40 rounded-lg border border-white/5">
+                  <input
+                    type="text"
+                    placeholder="Search name/email..."
+                    value={applicantFilters.search}
+                    onChange={(e) => setApplicantFilters(prev => ({ ...prev, search: e.target.value }))}
+                    className="px-3 py-2 bg-neutral-900 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Min Match Score"
+                    value={applicantFilters.minMatchScore}
+                    onChange={(e) => setApplicantFilters(prev => ({ ...prev, minMatchScore: Number(e.target.value) }))}
+                    className="px-3 py-2 bg-neutral-900 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Branch"
+                    value={applicantFilters.branch}
+                    onChange={(e) => setApplicantFilters(prev => ({ ...prev, branch: e.target.value }))}
+                    className="px-3 py-2 bg-neutral-900 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Min CGPA"
+                    value={applicantFilters.minCGPA}
+                    onChange={(e) => setApplicantFilters(prev => ({ ...prev, minCGPA: e.target.value }))}
+                    className="px-3 py-2 bg-neutral-900 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                </div>
+
                 <div className="flex justify-between items-center mb-4">
-                  <div className="text-sm text-neutral-400">Showing {matchedStudents.length} interested students • {selectedStudents.length} selected</div>
+                  <div className="text-sm text-neutral-400">
+                    Showing {filteredApplicants.length} of {matchedStudents.length} applicants • {selectedStudents.length} selected
+                  </div>
                   <div className="flex gap-2">
+                    <button onClick={exportToCSV} className="px-4 py-1.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs hover:bg-green-500/30 transition">Export CSV</button>
                     <button onClick={selectAllStudents} className="px-3 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5">Select All</button>
                     <button onClick={deselectAllStudents} className="px-3 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5">Clear</button>
                   </div>
                 </div>
 
                 <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
-                  {matchedStudents.map((m) => (
+                  {filteredApplicants.map((m) => (
                     <div
                       key={m.studentId}
-                      className={`border rounded-lg p-4 transition cursor-pointer ${selectedStudents.includes(m.studentId) ? 'border-green-500/40 bg-green-500/10' : 'border-white/10 bg-neutral-900/50'}`}
-                      onClick={() => toggleStudentSelection(m.studentId)}
+                      className={`border rounded-lg p-4 transition ${selectedStudents.includes(m.studentId) ? 'border-green-500/40 bg-green-500/10' : 'border-white/10 bg-neutral-900/50'}`}
                     >
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
@@ -717,7 +832,7 @@ function AlumniJobs() {
                               <span className="text-xs text-green-400">{Math.round(m.matchScore)}% match</span>
                             )}
                           </div>
-                          <p className="text-sm text-neutral-400 mt-1">{selectedJob.title} • {selectedJob.company}</p>
+                          <p className="text-sm text-neutral-400 mt-1">{m.student?.email || 'No email'}</p>
                           <p className="text-xs text-neutral-500 mt-1">{m.student?.branch || 'N/A'} • Batch {m.student?.batch || 'N/A'} • CGPA: {m.student?.cgpa || 'N/A'}</p>
                           {m.student?.skills && m.student.skills.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
@@ -726,8 +841,31 @@ function AlumniJobs() {
                               ))}
                             </div>
                           )}
+                          <div className="flex gap-2 mt-2">
+                            {m.resumeUrl && (
+                              <a href={m.resumeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-green-400 hover:underline">
+                                View Resume →
+                              </a>
+                            )}
+                            {m.student?.linkedIn && (
+                              <a href={m.student.linkedIn} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline">
+                                LinkedIn
+                              </a>
+                            )}
+                            {m.student?.github && (
+                              <a href={m.student.github} target="_blank" rel="noopener noreferrer" className="text-xs text-purple-400 hover:underline">
+                                GitHub
+                              </a>
+                            )}
+                          </div>
                         </div>
-                        <input type="checkbox" checked={selectedStudents.includes(m.studentId)} onChange={() => toggleStudentSelection(m.studentId)} className="ml-4" />
+                        <input 
+                          type="checkbox" 
+                          checked={selectedStudents.includes(m.studentId)} 
+                          onChange={() => toggleStudentSelection(m.studentId)} 
+                          onClick={(e) => e.stopPropagation()}
+                          className="ml-4 cursor-pointer" 
+                        />
                       </div>
                     </div>
                   ))}

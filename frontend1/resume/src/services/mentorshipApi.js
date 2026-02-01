@@ -278,8 +278,8 @@ export const getMyReferrals = async (status) => {
 };
 
 // Student marks interest in a job
-export const markJobInterest = async (jobId) => {
-  return api.post(`/api/mentorship/jobs/${jobId}/interest`);
+export const markJobInterest = async (jobId, resumeUrl = null) => {
+  return api.post(`/api/mentorship/jobs/${jobId}/interest`, { resumeUrl });
 };
 
 // Alumni fetch interested students for their job

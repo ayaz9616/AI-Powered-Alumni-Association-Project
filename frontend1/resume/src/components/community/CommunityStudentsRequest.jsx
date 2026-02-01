@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { ArrowUp } from "lucide-react";
-import { getSessionRequests, createSessionRequest, voteOnSession, scheduleSession } from "../../services/communityApi";
+import { ArrowUp, Trash2, Edit2 } from "lucide-react";
+import { getSessionRequests, createSessionRequest, voteOnSession, scheduleSession, deleteSessionRequest, updateSessionRequest } from "../../services/communityApi";
+import toast from "react-hot-toast";
 
 const CommunityStudentsRequest = () => {
   const [sessions, setSessions] = useState([]);
@@ -8,8 +9,14 @@ const CommunityStudentsRequest = () => {
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedSession, setSelectedSession] = useState(null);
+  const [editingSession, setEditingSession] = useState(null);
 
   const [requestForm, setRequestForm] = useState({
+    topic: "",
+    description: "",
+  });
+
+  const [editForm, setEditForm] = useState({
     topic: "",
     description: "",
   });
@@ -69,9 +76,51 @@ const CommunityStudentsRequest = () => {
       setRequestForm({ topic: "", description: "" });
       setShowRequestModal(false);
       loadSessions();
+      toast.success("Session request created successfully!");
     } catch (error) {
       console.error("Error creating session request:", error);
-      alert("Failed to create session request. Please try again.");
+      toast.error("Failed to create session request. Please try again.");
+    }
+  };
+
+  const handleDeleteSession = async (sessionId) => {
+    if (!confirm("Are you sure you want to delete this session request?")) {
+      return;
+    }
+
+    try {
+      await deleteSessionRequest(sessionId);
+      toast.success("Session request deleted successfully!");
+      loadSessions();
+    } catch (error) {
+      console.error("Error deleting session request:", error);
+      toast.error(error.response?.data?.message || "Failed to delete session request");
+    }
+  };
+
+  const openEditModal = (session) => {
+    setEditingSession(session);
+    setEditForm({
+      topic: session.topic,
+      description: session.description,
+    });
+  };
+
+  const submitEdit = async () => {
+    if (!editForm.topic || !editForm.description) {
+      toast.error("Please fill in both topic and description");
+      return;
+    }
+
+    try {
+      await updateSessionRequest(editingSession.sessionId, editForm.topic, editForm.description);
+      setEditingSession(null);
+      setEditForm({ topic: "", description: "" });
+      toast.success("Session request updated successfully!");
+      loadSessions();
+    } catch (error) {
+      console.error("Error updating session request:", error);
+      toast.error(error.response?.data?.message || "Failed to update session request");
     }
   };
 
@@ -187,17 +236,39 @@ const CommunityStudentsRequest = () => {
                       </p>
                     </div>
 
-                    <span
-                      className={`text-xs px-3 py-1 rounded-full border ml-4 whitespace-nowrap ${
-                        session.status === "open"
-                          ? "border-yellow-500/30 text-yellow-400 bg-yellow-500/20"
-                          : "border-green-500/30 text-green-400 bg-green-500/20"
-                      }`}
-                    >
-                      {session.status === "open"
-                        ? "Open for Voting"
-                        : "Scheduled"}
-                    </span>
+                    <div className="flex items-center gap-2 ml-4">
+                      {/* Edit and Delete buttons - only visible to the proposer */}
+                      {session.proposedById === userId && session.status === "open" && (
+                        <>
+                          <button
+                            onClick={() => openEditModal(session)}
+                            className="p-2 rounded-lg border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 transition"
+                            title="Edit session request"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSession(session.sessionId)}
+                            className="p-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/20 transition"
+                            title="Delete session request"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+
+                      <span
+                        className={`text-xs px-3 py-1 rounded-full border whitespace-nowrap ${
+                          session.status === "open"
+                            ? "border-yellow-500/30 text-yellow-400 bg-yellow-500/20"
+                            : "border-green-500/30 text-green-400 bg-green-500/20"
+                        }`}
+                      >
+                        {session.status === "open"
+                          ? "Open for Voting"
+                          : "Scheduled"}
+                      </span>
+                    </div>
                   </div>
 
               {session.status === "scheduled" && session.scheduledDetails && (
@@ -374,6 +445,50 @@ const CommunityStudentsRequest = () => {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Session Modal */}
+      {editingSession && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-neutral-950 border border-white/10 rounded-2xl p-8 w-full max-w-lg">
+            <h2 className="text-2xl font-medium mb-6">Edit Session Request</h2>
+            <div className="space-y-4">
+              <input
+                placeholder="Session Topic"
+                value={editForm.topic}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, topic: e.target.value })
+                }
+                className="w-full px-4 py-3 bg-neutral-900 border border-white/10 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-green-500"
+              />
+              <textarea
+                placeholder="Description"
+                value={editForm.description}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, description: e.target.value })
+                }
+                className="w-full px-4 py-3 bg-neutral-900 border border-white/10 rounded-lg text-white placeholder:text-neutral-500 h-32 resize-none focus:outline-none focus:border-green-500"
+              />
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={submitEdit}
+                className="flex-1 rounded-full bg-green-500 px-6 py-2.5 text-sm font-medium text-black hover:bg-green-400"
+              >
+                Save Changes
+              </button>
+              <button
+                onClick={() => {
+                  setEditingSession(null);
+                  setEditForm({ topic: "", description: "" });
+                }}
+                className="flex-1 rounded-full border border-white/10 px-6 py-2.5 text-sm text-white hover:bg-white/5"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

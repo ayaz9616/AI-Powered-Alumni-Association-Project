@@ -303,6 +303,7 @@ export interface IJobInterest extends Document {
   studentId: string;
   eligible: boolean;
   ineligibleReasons?: string[];
+  resumeUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -552,7 +553,8 @@ const JobInterestSchema = new Schema<IJobInterest>({
   jobId: { type: String, required: true, index: true },
   studentId: { type: String, required: true },
   eligible: { type: Boolean, default: true },
-  ineligibleReasons: [String]
+  ineligibleReasons: [String],
+  resumeUrl: String
 }, {
   timestamps: true
 });

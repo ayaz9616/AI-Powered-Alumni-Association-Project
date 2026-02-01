@@ -615,6 +615,7 @@ router.put('/referrals/:referralId/status', authenticate, requireAlumni, async (
 router.post('/:jobId/interest', authenticate, requireStudent, async (req: AuthRequest, res: Response) => {
   try {
     const { jobId } = req.params;
+    const { resumeUrl } = req.body;
     const studentId = req.user!.userId;
 
     const job = await Job.findOne({ jobId });
@@ -631,34 +632,33 @@ router.post('/:jobId/interest', authenticate, requireStudent, async (req: AuthRe
       return res.status(404).json({ error: 'Student profile not found' });
     }
 
-    // Eligibility checks
-    const reasons: string[] = [];
-    const cgpaVal = parseFloat(student.cgpa || '0');
-    if (typeof job.minCGPA === 'number' && !isNaN(job.minCGPA)) {
-      if (isNaN(cgpaVal) || cgpaVal < job.minCGPA) {
-        reasons.push(`CGPA below minimum requirement (${student.cgpa || 'N/A'} < ${job.minCGPA})`);
+    // Record eligibility warnings (don't block application)
+    const warnings: string[] = [];
+    
+    // CGPA check
+    if (typeof job.minCGPA === 'number' && !isNaN(job.minCGPA) && student.cgpa) {
+      const cgpaVal = parseFloat(student.cgpa);
+      if (!isNaN(cgpaVal) && cgpaVal < job.minCGPA) {
+        warnings.push(`CGPA below minimum requirement (${student.cgpa} < ${job.minCGPA})`);
       }
     }
 
-    if (Array.isArray(job.eligibleBranches) && job.eligibleBranches.length > 0) {
-      if (!student.branch || !job.eligibleBranches.includes(student.branch)) {
-        reasons.push(`Branch not eligible (${student.branch || 'N/A'})`);
+    // Branch check
+    if (Array.isArray(job.eligibleBranches) && job.eligibleBranches.length > 0 && student.branch) {
+      if (!job.eligibleBranches.includes(student.branch)) {
+        warnings.push(`Branch may not be eligible (${student.branch})`);
       }
     }
 
-    if (Array.isArray(job.eligibleBatches) && job.eligibleBatches.length > 0) {
-      if (!student.batch || !job.eligibleBatches.includes(student.batch)) {
-        reasons.push(`Batch not eligible (${student.batch || 'N/A'})`);
+    // Batch check
+    if (Array.isArray(job.eligibleBatches) && job.eligibleBatches.length > 0 && student.batch) {
+      if (!job.eligibleBatches.includes(student.batch)) {
+        warnings.push(`Batch may not be eligible (${student.batch})`);
       }
     }
 
-    if (reasons.length > 0) {
-      return res.status(403).json({
-        success: false,
-        error: 'Not eligible for this job',
-        reasons
-      });
-    }
+    // Allow application but mark as potentially ineligible
+    const isEligible = warnings.length === 0;
 
     // Upsert interest (ensure unique per jobId+studentId)
     let interest = await JobInterest.findOne({ jobId, studentId });
@@ -668,16 +668,28 @@ router.post('/:jobId/interest', authenticate, requireStudent, async (req: AuthRe
         interestId,
         jobId,
         studentId,
-        eligible: true,
-        ineligibleReasons: []
+        eligible: isEligible,
+        ineligibleReasons: warnings,
+        resumeUrl: resumeUrl || student.parsedResume?.["Resume URL"] || undefined
       });
       await interest.save();
+    } else {
+      // Update resume URL if provided
+      if (resumeUrl) {
+        interest.resumeUrl = resumeUrl;
+        interest.eligible = isEligible;
+        interest.ineligibleReasons = warnings;
+        await interest.save();
+      }
     }
 
     res.json({
       success: true,
-      message: 'Interest recorded',
-      interest
+      message: warnings.length > 0 
+        ? `Application submitted with eligibility warnings: ${warnings.join(', ')}` 
+        : 'Application submitted successfully',
+      interest,
+      warnings
     });
 
   } catch (error: any) {
@@ -739,12 +751,15 @@ router.get('/:jobId/interested', authenticate, requireAlumni, async (req: AuthRe
     // Enrich and sort by matchScore desc
     const enriched = matches.map(m => {
       const student = students.find(s => s.userId === m.studentId);
+      const interest = interests.find(i => i.studentId === m.studentId);
       return {
         studentId: m.studentId,
         matchScore: m.matchScore,
         matchReasons: m.matchReasons,
         skillMatches: m.skillMatches,
         skillGaps: m.skillGaps,
+        resumeUrl: interest?.resumeUrl || null,
+        appliedAt: interest?.createdAt || null,
         student: student ? {
           userId: student.userId,
           name: student.name,
