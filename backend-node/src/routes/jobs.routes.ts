@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { Job, JobReferral, StudentProfile, JobStatus, ReferralStatus } from '../models/Mentorship';
+import { Job, JobReferral, StudentProfile, JobStatus, ReferralStatus, JobInterest } from '../models/Mentorship';
 import { LangChainMatchingService } from '../services/LangChainMatchingService';
-import { authenticate, requireAlumni, AuthRequest } from '../middleware/auth.middleware';
+import { authenticate, requireAlumni, requireStudent, AuthRequest } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -602,6 +602,172 @@ router.put('/referrals/:referralId/status', authenticate, requireAlumni, async (
 
   } catch (error: any) {
     console.error('[Jobs] Referral status update failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== STUDENT INTEREST ====================
+
+/**
+ * POST /api/mentorship/jobs/:jobId/interest
+ * Student marks interest in a job (eligibility enforced)
+ */
+router.post('/:jobId/interest', authenticate, requireStudent, async (req: AuthRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const studentId = req.user!.userId;
+
+    const job = await Job.findOne({ jobId });
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (job.status !== JobStatus.ACTIVE) {
+      return res.status(400).json({ error: 'Job is not active' });
+    }
+
+    const student = await StudentProfile.findOne({ userId: studentId });
+    if (!student) {
+      return res.status(404).json({ error: 'Student profile not found' });
+    }
+
+    // Eligibility checks
+    const reasons: string[] = [];
+    const cgpaVal = parseFloat(student.cgpa || '0');
+    if (typeof job.minCGPA === 'number' && !isNaN(job.minCGPA)) {
+      if (isNaN(cgpaVal) || cgpaVal < job.minCGPA) {
+        reasons.push(`CGPA below minimum requirement (${student.cgpa || 'N/A'} < ${job.minCGPA})`);
+      }
+    }
+
+    if (Array.isArray(job.eligibleBranches) && job.eligibleBranches.length > 0) {
+      if (!student.branch || !job.eligibleBranches.includes(student.branch)) {
+        reasons.push(`Branch not eligible (${student.branch || 'N/A'})`);
+      }
+    }
+
+    if (Array.isArray(job.eligibleBatches) && job.eligibleBatches.length > 0) {
+      if (!student.batch || !job.eligibleBatches.includes(student.batch)) {
+        reasons.push(`Batch not eligible (${student.batch || 'N/A'})`);
+      }
+    }
+
+    if (reasons.length > 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not eligible for this job',
+        reasons
+      });
+    }
+
+    // Upsert interest (ensure unique per jobId+studentId)
+    let interest = await JobInterest.findOne({ jobId, studentId });
+    if (!interest) {
+      const interestId = `interest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      interest = new JobInterest({
+        interestId,
+        jobId,
+        studentId,
+        eligible: true,
+        ineligibleReasons: []
+      });
+      await interest.save();
+    }
+
+    res.json({
+      success: true,
+      message: 'Interest recorded',
+      interest
+    });
+
+  } catch (error: any) {
+    console.error('[Jobs] Mark interest failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/mentorship/jobs/:jobId/interested
+ * Alumni fetches interested students for their job, sorted by match score
+ */
+router.get('/:jobId/interested', authenticate, requireAlumni, async (req: AuthRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const userId = req.user!.userId;
+
+    const job = await Job.findOne({ jobId });
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Verify ownership
+    if (job.postedBy !== userId) {
+      return res.status(403).json({ error: 'You can only view interested students for your own jobs' });
+    }
+
+    const interests = await JobInterest.find({ jobId });
+    if (interests.length === 0) {
+      return res.json({ success: true, totalInterested: 0, students: [] });
+    }
+
+    const studentIds = interests.map(i => i.studentId);
+    const students = await StudentProfile.find({ userId: { $in: studentIds } });
+
+    // Prepare data for matching
+    const studentData = students.map(s => ({
+      userId: s.userId,
+      name: s.name,
+      skills: s.skills,
+      cgpa: s.cgpa,
+      branch: s.branch,
+      batch: s.batch,
+      domain: s.domain,
+      careerGoals: s.careerGoals,
+      totalExperience: s.totalExperience,
+      projects: s.projects,
+      internships: s.internships
+    }));
+
+    // Compute match scores (uses fallback if AI keys missing)
+    const matches = await LangChainMatchingService.matchStudentsToJob(
+      job.description,
+      job.requiredSkills || [],
+      job.preferredSkills || [],
+      studentData
+    );
+
+    // Enrich and sort by matchScore desc
+    const enriched = matches.map(m => {
+      const student = students.find(s => s.userId === m.studentId);
+      return {
+        studentId: m.studentId,
+        matchScore: m.matchScore,
+        matchReasons: m.matchReasons,
+        skillMatches: m.skillMatches,
+        skillGaps: m.skillGaps,
+        student: student ? {
+          userId: student.userId,
+          name: student.name,
+          email: student.email,
+          branch: student.branch,
+          batch: student.batch,
+          cgpa: student.cgpa,
+          skills: student.skills,
+          linkedIn: student.linkedIn,
+          github: student.github,
+          portfolioUrl: student.portfolioUrl
+        } : null
+      };
+    }).sort((a, b) => b.matchScore - a.matchScore);
+
+    res.json({
+      success: true,
+      totalInterested: enriched.length,
+      students: enriched
+    });
+
+  } catch (error: any) {
+    console.error('[Jobs] Fetch interested students failed:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -296,6 +296,17 @@ export interface AlumniFeedback {
   submittedAt: Date;
 }
 
+// Job interest interface (student-driven interest for a job)
+export interface IJobInterest extends Document {
+  interestId: string;
+  jobId: string;
+  studentId: string;
+  eligible: boolean;
+  ineligibleReasons?: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ==================== SCHEMAS ====================
 
 const ParsedResumeSchema = new Schema({
@@ -535,6 +546,17 @@ const JobReferralSchema = new Schema<IJobReferral>({
   timestamps: true
 });
 
+// Job interest schema
+const JobInterestSchema = new Schema<IJobInterest>({
+  interestId: { type: String, required: true, unique: true },
+  jobId: { type: String, required: true, index: true },
+  studentId: { type: String, required: true },
+  eligible: { type: Boolean, default: true },
+  ineligibleReasons: [String]
+}, {
+  timestamps: true
+});
+
 // Add indexes for performance
 MentorMatchSchema.index({ studentId: 1, matchScore: -1 });
 MentorMatchSchema.index({ alumniId: 1, matchScore: -1 });
@@ -547,6 +569,7 @@ JobSchema.index({ eligibleBranches: 1, status: 1 });
 JobReferralSchema.index({ jobId: 1, studentId: 1 });
 JobReferralSchema.index({ studentId: 1, status: 1 });
 JobReferralSchema.index({ referredBy: 1, jobId: 1 });
+JobInterestSchema.index({ jobId: 1, studentId: 1 }, { unique: true });
 
 // ==================== MODELS ====================
 export const User = mongoose.model<IUser>('User', UserSchema);
@@ -556,3 +579,4 @@ export const MentorMatch = mongoose.model<IMentorMatch>('MentorMatch', MentorMat
 export const MentorshipSession = mongoose.model<IMentorshipSession>('MentorshipSession', MentorshipSessionSchema);
 export const Job = mongoose.model<IJob>('Job', JobSchema);
 export const JobReferral = mongoose.model<IJobReferral>('JobReferral', JobReferralSchema);
+export const JobInterest = mongoose.model<IJobInterest>('JobInterest', JobInterestSchema);

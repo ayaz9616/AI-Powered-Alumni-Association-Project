@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
-import { User, StudentProfile, AlumniProfile, MentorshipSession, SessionStatus, UserRole } from '../models/Mentorship';
-import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth.middleware';
+import { User, StudentProfile, AlumniProfile, MentorshipSession, SessionStatus, UserRole, JobReferral } from '../models/Mentorship';
+import { InfluenceInsightsService } from '../services/InfluenceInsightsService';
+import { authenticate, requireAdmin, optionalAuth, AuthRequest } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -363,3 +364,110 @@ router.get('/admin/users/list', authenticate, requireAdmin, async (req: AuthRequ
 });
 
 export default router;
+
+/**
+ * GET /api/mentorship/admin/graphs/influence
+ * Build an Alumni → Students influence graph
+ * Computes degree-based centrality and batch coverage
+ * 
+ * Protected: ADMIN role only
+ */
+router.get('/admin/graphs/influence', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    // Fetch all completed mentorship sessions
+    const sessions = await MentorshipSession.find({ status: SessionStatus.COMPLETED }).select('alumniId studentId');
+    // Include referrals as influence
+    const referrals = await JobReferral.find().select('referredBy studentId');
+
+    // Build edges alumni -> student
+    const edgesMap = new Map<string, Set<string>>();
+
+    for (const s of sessions) {
+      const key = s.alumniId;
+      if (!edgesMap.has(key)) edgesMap.set(key, new Set());
+      edgesMap.get(key)!.add(s.studentId);
+    }
+    for (const r of referrals) {
+      const key = r.referredBy;
+      if (!edgesMap.has(key)) edgesMap.set(key, new Set());
+      edgesMap.get(key)!.add(r.studentId);
+    }
+
+    // Collect batch info for students
+    const allStudentIds = Array.from(new Set(Array.from(edgesMap.values()).flatMap(set => Array.from(set))));
+    const studentProfiles = await StudentProfile.find({ userId: { $in: allStudentIds } }).select('userId batch');
+    const batchByStudent = new Map<string, string>();
+    studentProfiles.forEach(sp => batchByStudent.set(sp.userId, sp.batch || 'Unknown'));
+
+    // Build nodes for alumni with centrality and batch coverage
+    const alumniIds = Array.from(edgesMap.keys());
+    const alumniUsers = await User.find({ userId: { $in: alumniIds } }).select('userId name email');
+    const alumniById = new Map(alumniUsers.map(u => [u.userId, u]));
+
+    const nodes = alumniIds.map(alumniId => {
+      const influenced: string[] = Array.from(edgesMap.get(alumniId) || new Set<string>());
+      const batches = new Set<string>();
+      influenced.forEach((sid: string) => batches.add(batchByStudent.get(sid) || 'Unknown'));
+      const degree = influenced.length;
+      // Simple normalized centrality: degree / maxDegree
+      // Compute max later; set placeholder
+      return {
+        id: alumniId,
+        type: 'alumni',
+        label: alumniById.get(alumniId)?.name || alumniId,
+        email: alumniById.get(alumniId)?.email,
+        impactedStudents: degree,
+        batches: Array.from(batches),
+        centrality: degree,
+      };
+    });
+
+    const maxDegree = nodes.reduce((m, n) => Math.max(m, n.centrality), 1);
+    nodes.forEach(n => (n.centrality = Number((n.centrality / maxDegree).toFixed(3))));
+
+    // Construct edges array limited to top alumni by degree for brevity
+    const topAlumni = nodes
+      .sort((a, b) => b.impactedStudents - a.impactedStudents)
+      .slice(0, 20)
+      .map(n => n.id);
+
+    const edges: Array<{ source: string; target: string; weight: number }> = [];
+    for (const alumniId of topAlumni) {
+      const influenced: string[] = Array.from(edgesMap.get(alumniId) || new Set<string>());
+      influenced.forEach((studentId: string) => {
+        edges.push({ source: alumniId, target: studentId, weight: 1 });
+      });
+    }
+
+    // Build student nodes for targets (minimal fields)
+    const studentNodes = Array.from(new Set(edges.map(e => e.target))).map(studentId => ({
+      id: studentId,
+      type: 'student',
+      label: studentId,
+    }));
+
+    // AI-generated insights
+    const aiTexts = await InfluenceInsightsService.generateInsights(nodes.map(n => ({
+      id: n.id,
+      label: n.label,
+      impactedStudents: n.impactedStudents,
+      batches: n.batches,
+      centrality: n.centrality,
+    })));
+    const insights = (aiTexts && aiTexts.length)
+      ? aiTexts.map(t => ({ text: t }))
+      : nodes.slice(0, 10).map(n => ({ text: `${n.label} impacted ${n.impactedStudents} students across ${n.batches.length} batches.` }));
+
+    res.json({
+      success: true,
+      graph: {
+        nodes: [...nodes, ...studentNodes],
+        edges,
+      },
+      insights,
+    });
+  } catch (error: any) {
+    console.error('[Admin] Influence graph failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});

@@ -277,6 +277,16 @@ export const getMyReferrals = async (status) => {
   return api.get(`/api/mentorship/jobs/my-referrals${query}`);
 };
 
+// Student marks interest in a job
+export const markJobInterest = async (jobId) => {
+  return api.post(`/api/mentorship/jobs/${jobId}/interest`);
+};
+
+// Alumni fetch interested students for their job
+export const getInterestedStudents = async (jobId) => {
+  return api.get(`/api/mentorship/jobs/${jobId}/interested`);
+};
+
 export const listAllUsers = async (role = null, limit = 50, skip = 0) => {
   const params = new URLSearchParams({ limit, skip });
   if (role) params.append('role', role);

@@ -17,7 +17,7 @@ function Home() {
       <TrustedPartners />
       
       <section id="about" ref={sectionRef} className="relative h-[400vh]">
-        <div className="sticky top-0 h-screen min-h-screen w-full overflow-hidden bg-black">
+        <div className="sticky top-0 h-screen min-h-screen w-full overflow-hidden bg-black relative">
           {/* Tiled background */}
           <div
             className="absolute inset-0 bg-top bg-repeat"

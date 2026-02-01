@@ -16,6 +16,7 @@ import sessionRoutes from './routes/session.routes';
 import adminRoutes from './routes/admin.routes';
 import communityRoutes from './routes/community.routes';
 import alumniRoutes from './routes/alumni.routes';
+import donationsRoutes from './routes/donations.routes';
 import { errorHandler } from './middleware/error.middleware';
 
 // Load environment variables
@@ -103,6 +104,7 @@ app.use('/api/mentorship', sessionRoutes);
 app.use('/api/mentorship', adminRoutes);
 app.use('/api/community', communityRoutes);
 app.use('/api/alumni', alumniRoutes);
+app.use('/api/donations', donationsRoutes);
 
 // Error handling
 app.use(errorHandler);

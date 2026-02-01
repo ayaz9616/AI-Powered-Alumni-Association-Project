@@ -1,18 +1,17 @@
 ﻿import { useState, useEffect } from 'react';
-import { getUserProfile } from '../lib/authManager';
 import {
   createJob,
   getMyJobs,
   updateJob,
   deleteJob,
-  matchStudentsToJob,
   referStudents,
   getMyReferrals,
-  updateReferralStatus
+  updateReferralStatus,
+  getInterestedStudents
 } from '../services/mentorshipApi';
 
 const CGPA_OPTIONS = [6, 6.5, 7, 7.5, 8, 8.5, 9];
-const BRANCHES = ['CSE', 'MNC', 'MAE', 'ECE',];
+const BRANCHES = ['CSE', 'MNC', 'MAE', 'ECE'];
 const BATCH_YEARS = [2025, 2026, 2027, 2028, 2029];
 
 const inputClass =
@@ -24,23 +23,25 @@ const inputClass =
   "focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500/30";
 
 function AlumniJobs() {
-  const userProfile = getUserProfile();
   const [jobs, setJobs] = useState([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingJobId, setEditingJobId] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
+
   const [matchedStudents, setMatchedStudents] = useState([]);
   const [matchingStudents, setMatchingStudents] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [referralNotes, setReferralNotes] = useState('');
   const [showMatchModal, setShowMatchModal] = useState(false);
+
   const [pendingReferrals, setPendingReferrals] = useState([]);
   const [loadingReferrals, setLoadingReferrals] = useState(false);
   const [showReferralsSection, setShowReferralsSection] = useState(false);
+
   const [showJobReferralsModal, setShowJobReferralsModal] = useState(false);
   const [jobPendingReferrals, setJobPendingReferrals] = useState([]);
-  
+
   const [form, setForm] = useState({
     title: '',
     company: '',
@@ -177,7 +178,6 @@ function AlumniJobs() {
 
   const handleDeleteJob = async (jobId) => {
     if (!window.confirm('Delete this job permanently?')) return;
-    
     try {
       await deleteJob(jobId);
       loadJobs();
@@ -191,21 +191,17 @@ function AlumniJobs() {
     setSelectedJob(job);
     setMatchingStudents(true);
     setShowMatchModal(true);
-
     try {
-      // Fetch ALL students without strict filtering, sorted by relevance/match score
-      const filterData = {
-        minCGPA: undefined, // Show all students regardless of CGPA
-        branches: [], // Show all branches
-        batches: [], // Show all batches
-        requiredSkills: job.requiredSkills, // Use job skills for relevance ranking
-        limit: 200 // Increased limit to show more students
-      };
-      const response = await matchStudentsToJob(job.jobId, filterData);
-      // Students are already sorted by match score from backend
-      setMatchedStudents(response.matches || []);
+      const response = await getInterestedStudents(job.jobId);
+      const matches = (response.students || []).map((item) => ({
+        studentId: item.studentId,
+        matchScore: item.matchScore,
+        matchReasons: item.matchReasons,
+        student: item.student
+      }));
+      setMatchedStudents(matches);
     } catch (err) {
-      console.error('Failed to match students:', err);
+      console.error('Failed to load interested students:', err);
       setMatchedStudents([]);
     } finally {
       setMatchingStudents(false);
@@ -213,9 +209,9 @@ function AlumniJobs() {
   };
 
   const toggleStudentSelection = (studentId) => {
-    setSelectedStudents(prev =>
+    setSelectedStudents(prev => (
       prev.includes(studentId) ? prev.filter(id => id !== studentId) : [...prev, studentId]
-    );
+    ));
   };
 
   const selectAllStudents = () => {
@@ -231,39 +227,33 @@ function AlumniJobs() {
       alert('Please select at least one student');
       return;
     }
-
     try {
-      // Send student IDs with match score and reasons
       const studentDataArray = selectedStudents.map(studentId => {
         const match = matchedStudents.find(m => m.studentId === studentId);
         return {
           studentId,
           matchScore: match?.matchScore || 0,
-          matchReasons: match?.matchReason ? [match.matchReason] : []
+          matchReasons: match?.matchReasons || []
         };
       });
-      
       await referStudents(selectedJob.jobId, studentDataArray, referralNotes);
       alert(`Successfully added ${selectedStudents.length} student(s) to pending referrals!`);
       setSelectedStudents([]);
       setReferralNotes('');
       setShowMatchModal(false);
-      loadPendingReferrals(); // Reload pending referrals
+      loadPendingReferrals();
     } catch (err) {
       console.error('Failed to refer students:', err);
       alert(err.message || 'Failed to refer students');
     }
   };
 
-
   const handleMarkAsReferred = async (referralId) => {
     if (!window.confirm('Mark this student as referred?')) return;
-    
     try {
       await updateReferralStatus(referralId, 'referred', 'Marked as referred by alumni');
       alert('Student marked as referred!');
       loadPendingReferrals();
-      // If we're viewing job-specific referrals, reload those too
       if (showJobReferralsModal && selectedJob) {
         handleViewJobReferrals(selectedJob);
       }
@@ -277,14 +267,10 @@ function AlumniJobs() {
     setSelectedJob(job);
     setShowJobReferralsModal(true);
     setLoadingReferrals(true);
-    
     try {
-      // Reload all pending referrals to get the latest data
       const response = await getMyReferrals('pending');
       const allReferrals = response.referrals || [];
       setPendingReferrals(allReferrals);
-      
-      // Filter pending referrals for this specific job
       const jobReferrals = allReferrals.filter(ref => ref.jobId === job.jobId);
       setJobPendingReferrals(jobReferrals);
     } catch (err) {
@@ -297,12 +283,9 @@ function AlumniJobs() {
 
   return (
     <div className="text-white min-h-screen bg-black p-6">
-      {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-neutral-500 mb-3">
-            Jobs
-          </p>
+          <p className="text-xs uppercase tracking-[0.3em] text-neutral-500 mb-3">Jobs</p>
           <h1 className="text-3xl font-medium">Manage Job Posts</h1>
         </div>
         <button
@@ -313,7 +296,6 @@ function AlumniJobs() {
         </button>
       </div>
 
-      {/* Loading State */}
       {loadingJobs && (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto"></div>
@@ -321,10 +303,9 @@ function AlumniJobs() {
         </div>
       )}
 
-      {/* Pending Referrals Section */}
       {pendingReferrals.length > 0 && (
         <div className="mb-8">
-          <div 
+          <div
             onClick={() => setShowReferralsSection(!showReferralsSection)}
             className="flex justify-between items-center cursor-pointer group mb-4"
           >
@@ -392,7 +373,6 @@ function AlumniJobs() {
         </div>
       )}
 
-      {/* Jobs List */}
       {!loadingJobs && (
         <div className="space-y-6">
           {jobs.length === 0 && (
@@ -414,7 +394,6 @@ function AlumniJobs() {
                   <p className="text-sm text-neutral-400 mt-1">{job.company} • {job.location}</p>
                   <p className="text-xs text-neutral-500 mt-2">{job.jobType}</p>
 
-                  {/* Job Details */}
                   <div className="flex flex-wrap gap-4 mt-4 text-xs text-neutral-500">
                     {job.minCGPA && <span>CGPA &gt;= {job.minCGPA}</span>}
                     {job.eligibleBatches && job.eligibleBatches.length > 0 && (
@@ -426,7 +405,6 @@ function AlumniJobs() {
                     {job.experienceRequired && <span>Exp: {job.experienceRequired}</span>}
                   </div>
 
-                  {/* Skills */}
                   {job.requiredSkills && job.requiredSkills.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-3">
                       {job.requiredSkills.slice(0, 5).map((skill, idx) => (
@@ -445,7 +423,6 @@ function AlumniJobs() {
                     </div>
                   )}
 
-                  {/* Stats */}
                   <div className="flex gap-4 mt-4 text-xs text-neutral-500">
                     <span>{job.viewCount || 0} views</span>
                     <span>{job.referralCount || 0} referrals</span>
@@ -463,13 +440,12 @@ function AlumniJobs() {
                 </span>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3 mt-6 flex-wrap">
                 <button
                   onClick={() => handleMatchStudents(job)}
-                  className="rounded-full bg-green-500/20 border border-green-500/40 px-4 py-1.5 text-xs text-green-400 hover:bg-green-500/30 transition"
+                  className="rounded-full bg-blue-500/20 border border-blue-500/40 px-4 py-1.5 text-xs text-blue-400 hover:bg-blue-500/30 transition"
                 >
-                  View All Students & Refer
+                  View Interested & Refer
                 </button>
 
                 <button
@@ -498,7 +474,6 @@ function AlumniJobs() {
         </div>
       )}
 
-      {/* Create / Edit Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-neutral-950 border border-white/10 rounded-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto my-8">
@@ -507,7 +482,6 @@ function AlumniJobs() {
             </h2>
 
             <div className="space-y-4">
-              {/* Basic Info */}
               <input
                 placeholder="Job Title *"
                 value={form.title}
@@ -604,11 +578,8 @@ function AlumniJobs() {
                 />
               </div>
 
-              {/* CGPA */}
               <div>
-                <p className="text-xs uppercase text-neutral-500 mb-2">
-                  Minimum CGPA
-                </p>
+                <p className="text-xs uppercase text-neutral-500 mb-2">Minimum CGPA</p>
                 <div className="flex flex-wrap gap-2">
                   {CGPA_OPTIONS.map((cgpa) => (
                     <button
@@ -632,11 +603,8 @@ function AlumniJobs() {
                 </div>
               </div>
 
-              {/* Batches */}
               <div>
-                <p className="text-xs uppercase text-neutral-500 mb-2">
-                  Eligible Batches
-                </p>
+                <p className="text-xs uppercase text-neutral-500 mb-2">Eligible Batches</p>
                 <div className="flex flex-wrap gap-2">
                   {BATCH_YEARS.map((year) => (
                     <button
@@ -654,11 +622,8 @@ function AlumniJobs() {
                 </div>
               </div>
 
-              {/* Branches */}
               <div>
-                <p className="text-xs uppercase text-neutral-500 mb-2">
-                  Eligible Branches
-                </p>
+                <p className="text-xs uppercase text-neutral-500 mb-2">Eligible Branches</p>
                 <div className="flex flex-wrap gap-2">
                   {BRANCHES.map((branch) => (
                     <button
@@ -676,7 +641,6 @@ function AlumniJobs() {
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3 pt-6">
                 <button
                   onClick={handleSubmit}
@@ -699,16 +663,13 @@ function AlumniJobs() {
         </div>
       )}
 
-      {/* Match Students Modal */}
       {showMatchModal && selectedJob && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-neutral-950 border border-white/10 rounded-2xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto my-8">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h2 className="text-2xl font-medium">Match Students</h2>
-                <p className="text-sm text-neutral-400 mt-1">
-                  {selectedJob.title} at {selectedJob.company}
-                </p>
+                <h2 className="text-2xl font-medium">Interested Students</h2>
+                <p className="text-sm text-neutral-400 mt-1">{selectedJob.title} at {selectedJob.company}</p>
               </div>
               <button
                 onClick={() => {
@@ -718,119 +679,65 @@ function AlumniJobs() {
                 }}
                 className="text-neutral-500 hover:text-white transition"
               >
-                x
+                Close
               </button>
             </div>
 
-            {/* Matched Students */}
             {matchingStudents ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto"></div>
-                <p className="text-neutral-500 mt-4">Finding matching students...</p>
+                <p className="text-neutral-500 mt-4">Loading interested students...</p>
               </div>
             ) : matchedStudents.length === 0 ? (
-              <div className="text-center py-12 border border-white/10 rounded-xl bg-black">
-                <p className="text-neutral-500">No matching students found</p>
+              <div className="text-center py-12 border border-white/10 rounded-xl bg-neutral-950">
+                <p className="text-neutral-500 text-sm">No students have expressed interest yet.</p>
               </div>
             ) : (
               <>
-                <div className="mb-4 flex items-center justify-between">
-                  <p className="text-sm text-neutral-400">
-                    {matchedStudents.length} students available • {selectedStudents.length} selected
-                    <span className="text-neutral-600 ml-2">(All students shown, sorted by relevance)</span>
-                  </p>
+                <div className="flex justify-between items-center mb-4">
+                  <div className="text-sm text-neutral-400">Showing {matchedStudents.length} interested students • {selectedStudents.length} selected</div>
                   <div className="flex gap-2">
-                    <button
-                      onClick={selectAllStudents}
-                      className="text-xs px-3 py-1 rounded-full border border-green-500/30 text-green-400 hover:bg-green-500/10 transition"
-                    >
-                      Select All
-                    </button>
-                    <button
-                      onClick={deselectAllStudents}
-                      className="text-xs px-3 py-1 rounded-full border border-white/10 text-neutral-400 hover:bg-white/5 transition"
-                    >
-                      Deselect All
-                    </button>
+                    <button onClick={selectAllStudents} className="px-3 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5">Select All</button>
+                    <button onClick={deselectAllStudents} className="px-3 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5">Clear</button>
                   </div>
                 </div>
 
                 <div className="space-y-3 mb-6 max-h-96 overflow-y-auto">
-                  {matchedStudents.map((match) => (
+                  {matchedStudents.map((m) => (
                     <div
-                      key={match.studentId}
-                      className={`border rounded-lg p-4 transition cursor-pointer ${
-                        selectedStudents.includes(match.studentId)
-                          ? "border-green-500/50 bg-green-500/10"
-                          : "border-white/10 bg-black hover:border-white/20"
-                      }`}
-                      onClick={() => toggleStudentSelection(match.studentId)}
+                      key={m.studentId}
+                      className={`border rounded-lg p-4 transition cursor-pointer ${selectedStudents.includes(m.studentId) ? 'border-green-500/40 bg-green-500/10' : 'border-white/10 bg-neutral-900/50'}`}
+                      onClick={() => toggleStudentSelection(m.studentId)}
                     >
-                      <div className="flex items-start justify-between">
+                      <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h4 className="font-medium">{match.student?.name || 'Unknown'}</h4>
-                            <span className="text-xs text-green-400">
-                              {Math.round(match.matchScore || 0)}% match
-                            </span>
+                            <h4 className="font-medium">{m.student?.name || 'Unknown'}</h4>
+                            {m.matchScore > 0 && (
+                              <span className="text-xs text-green-400">{Math.round(m.matchScore)}% match</span>
+                            )}
                           </div>
-                          <p className="text-sm text-neutral-400 mt-1">
-                            {match.student?.branch || 'N/A'} • Batch {match.student?.batch || 'N/A'} • CGPA: {match.student?.cgpa || 'N/A'}
-                          </p>
-                          {match.student?.skills && match.student.skills.length > 0 && (
+                          <p className="text-sm text-neutral-400 mt-1">{selectedJob.title} • {selectedJob.company}</p>
+                          <p className="text-xs text-neutral-500 mt-1">{m.student?.branch || 'N/A'} • Batch {m.student?.batch || 'N/A'} • CGPA: {m.student?.cgpa || 'N/A'}</p>
+                          {m.student?.skills && m.student.skills.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-2">
-                              {match.student.skills.slice(0, 5).map((skill, idx) => (
-                                <span
-                                  key={idx}
-                                  className="px-2 py-0.5 rounded-full bg-white/5 text-xs text-neutral-400"
-                                >
-                                  {skill}
-                                </span>
+                              {m.student.skills.slice(0, 6).map((skill, idx) => (
+                                <span key={idx} className="px-2 py-0.5 rounded-full bg-white/5 text-xs text-neutral-400">{skill}</span>
                               ))}
                             </div>
                           )}
-                          {match.matchReason && (
-                            <p className="text-xs text-neutral-500 mt-2">{match.matchReason}</p>
-                          )}
                         </div>
-                        <input
-                          type="checkbox"
-                          checked={selectedStudents.includes(match.studentId)}
-                          onChange={() => {}}
-                          className="mt-1"
-                        />
+                        <input type="checkbox" checked={selectedStudents.includes(m.studentId)} onChange={() => toggleStudentSelection(m.studentId)} className="ml-4" />
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {/* Referral Notes */}
-                <textarea
-                  placeholder="Add a note for the referral (optional)"
-                  value={referralNotes}
-                  onChange={(e) => setReferralNotes(e.target.value)}
-                  className={`${inputClass} h-20 resize-none mb-4`}
-                />
+                <textarea placeholder="Add a note for the referral (optional)" value={referralNotes} onChange={(e) => setReferralNotes(e.target.value)} className={`${inputClass} h-20 resize-none mb-4`} />
 
-                {/* Actions */}
                 <div className="flex gap-3">
-                  <button
-                    onClick={handleReferStudents}
-                    disabled={selectedStudents.length === 0}
-                    className="flex-1 bg-gradient-to-r from-green-500 to-green-600 rounded-full py-2.5 font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                  >
-                    Refer {selectedStudents.length} Student{selectedStudents.length !== 1 ? 's' : ''}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMatchModal(false);
-                      setSelectedStudents([]);
-                      setReferralNotes('');
-                    }}
-                    className="flex-1 rounded-full border border-white/10 py-2.5 text-white hover:bg-white/5 transition"
-                  >
-                    Cancel
-                  </button>
+                  <button onClick={handleReferStudents} disabled={selectedStudents.length === 0} className="flex-1 bg-gradient-to-r from-green-500 to-green-600 rounded-full py-2.5 font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition">Refer Selected Interested</button>
+                  <button onClick={() => { setShowMatchModal(false); setSelectedStudents([]); setReferralNotes(''); }} className="flex-1 rounded-full border border-white/10 py-2.5 text-white hover:bg-white/5 transition">Close</button>
                 </div>
               </>
             )}
@@ -838,26 +745,15 @@ function AlumniJobs() {
         </div>
       )}
 
-      {/* Job-Specific Pending Referrals Modal */}
       {showJobReferralsModal && selectedJob && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-neutral-950 border border-white/10 rounded-2xl p-8 w-full max-w-3xl max-h-[90vh] overflow-y-auto my-8">
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h2 className="text-2xl font-medium">Pending Referrals</h2>
-                <p className="text-sm text-neutral-400 mt-1">
-                  {selectedJob.title} at {selectedJob.company}
-                </p>
+                <p className="text-sm text-neutral-400 mt-1">{selectedJob.title} at {selectedJob.company}</p>
               </div>
-              <button
-                onClick={() => {
-                  setShowJobReferralsModal(false);
-                  setJobPendingReferrals([]);
-                }}
-                className="text-neutral-500 hover:text-white transition"
-              >
-                ✕
-              </button>
+              <button onClick={() => { setShowJobReferralsModal(false); setJobPendingReferrals([]); }} className="text-neutral-500 hover:text-white transition">✕</button>
             </div>
 
             {loadingReferrals ? (
@@ -866,72 +762,37 @@ function AlumniJobs() {
                 <p className="text-neutral-500 mt-4">Loading referrals...</p>
               </div>
             ) : jobPendingReferrals.length === 0 ? (
-              <div className="text-center py-12 border border-white/10 rounded-xl bg-black">
-                <p className="text-neutral-500">No pending referrals for this job</p>
-                <p className="text-xs text-neutral-600 mt-2">Students you refer will appear here until marked as referred</p>
+              <div className="text-center py-12 border border-white/10 rounded-xl bg-neutral-950">
+                <p className="text-neutral-500 text-sm">No pending referrals for this job.</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {jobPendingReferrals.map((referral) => (
-                  <div
-                    key={referral.referralId}
-                    className="border border-yellow-500/30 rounded-lg p-4 bg-yellow-500/5 hover:border-yellow-500/50 transition"
-                  >
+                  <div key={referral.referralId} className="border border-yellow-500/30 rounded-lg p-4 bg-yellow-500/5 hover:border-yellow-500/50 transition">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h4 className="font-medium">{referral.student?.name || 'Unknown'}</h4>
                           {referral.matchScore > 0 && (
-                            <span className="text-xs text-green-400">
-                              {Math.round(referral.matchScore)}% match
-                            </span>
+                            <span className="text-xs text-green-400">{Math.round(referral.matchScore)}% match</span>
                           )}
                         </div>
-                        <p className="text-sm text-neutral-400 mt-1">
-                          {referral.student?.email || 'No email'}
-                        </p>
-                        <p className="text-xs text-neutral-500 mt-1">
-                          {referral.student?.branch || 'N/A'} • Batch {referral.student?.batch || 'N/A'} • CGPA: {referral.student?.cgpa || 'N/A'}
-                        </p>
-                        {referral.alumniNotes && (
-                          <p className="text-xs text-neutral-400 mt-2 italic">Note: {referral.alumniNotes}</p>
-                        )}
+                        <p className="text-sm text-neutral-400 mt-1">{selectedJob.title} • {selectedJob.company}</p>
+                        <p className="text-xs text-neutral-500 mt-1">{referral.student?.branch || 'N/A'} • Batch {referral.student?.batch || 'N/A'} • CGPA: {referral.student?.cgpa || 'N/A'}</p>
                         {referral.student?.skills && referral.student.skills.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
-                            {referral.student.skills.slice(0, 8).map((skill, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-0.5 rounded-full bg-white/5 text-xs text-neutral-400"
-                              >
-                                {skill}
-                              </span>
+                            {referral.student.skills.slice(0, 6).map((skill, idx) => (
+                              <span key={idx} className="px-2 py-0.5 rounded-full bg-white/5 text-xs text-neutral-400">{skill}</span>
                             ))}
                           </div>
                         )}
                       </div>
-                      <button
-                        onClick={() => handleMarkAsReferred(referral.referralId)}
-                        className="ml-4 px-4 py-1.5 rounded-full bg-green-500/20 border border-green-500/40 text-green-400 text-xs hover:bg-green-500/30 active:scale-95 transition whitespace-nowrap"
-                      >
-                        Mark as Referred
-                      </button>
+                      <button onClick={() => handleMarkAsReferred(referral.referralId)} className="ml-4 px-4 py-1.5 rounded-full bg-green-500/20 border border-green-500/40 text-green-400 text-xs hover:bg-green-500/30 active:scale-95 transition whitespace-nowrap">Mark as Referred</button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-
-            <div className="mt-6">
-              <button
-                onClick={() => {
-                  setShowJobReferralsModal(false);
-                  setJobPendingReferrals([]);
-                }}
-                className="w-full rounded-full border border-white/10 py-2.5 text-white hover:bg-white/5 transition"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </div>
       )}

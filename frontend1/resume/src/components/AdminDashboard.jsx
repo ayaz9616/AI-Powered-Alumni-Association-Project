@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Briefcase, Calendar, TrendingUp, Activity } from 'lucide-react';
+import { Users, Briefcase, Calendar, TrendingUp, Activity, Share2 } from 'lucide-react';
+import { getAdminOverview, getEngagementTrends } from '../services/mentorshipApi';
+import api from '../services/api';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState({
@@ -12,15 +14,75 @@ const AdminDashboard = () => {
   });
 
   useEffect(() => {
-    // Simulated data - replace with actual API calls
-    setStats({
-      totalUsers: 847,
-      totalAlumni: 422,
-      totalStudents: 425,
-      totalJobs: 156,
-      totalSessions: 89,
-      activeSessions: 23
-    });
+    // Fetch overview KPIs
+    (async () => {
+      try {
+        const res = await getAdminOverview();
+        if (res?.success && res?.overview) {
+          const ov = res.overview;
+          setStats({
+            totalUsers: ov.users.total,
+            totalAlumni: ov.users.alumni,
+            totalStudents: ov.users.students,
+            totalJobs: 0,
+            totalSessions: ov.sessions.total,
+            activeSessions: ov.sessions.accepted || 0,
+          });
+        }
+      } catch (_e) {
+        // keep defaults if unauthorized
+      }
+    })();
+
+    // Try fetching influence graph (admin-only; skip if unauthorized)
+    (async () => {
+      try {
+        const res = await api.get('/api/mentorship/admin/graphs/influence', {
+          headers: { 'x-user-id': 'admin-user' }
+        });
+        if (res.data?.graph) {
+          setInfluence(res.data);
+        }
+      } catch (err) {
+        // Fallback demo data
+        setInfluence({
+          graph: {
+            nodes: [
+              { id: 'alumni-1', type: 'alumni', label: 'Alumni One', centrality: 1.0, impactedStudents: 12, batches: ['2022','2023'] },
+              { id: 'alumni-2', type: 'alumni', label: 'Alumni Two', centrality: 0.8, impactedStudents: 9, batches: ['2021','2023'] },
+              { id: 'stu-a', type: 'student', label: 'stu-a' },
+              { id: 'stu-b', type: 'student', label: 'stu-b' },
+              { id: 'stu-c', type: 'student', label: 'stu-c' },
+            ],
+            edges: [
+              { source: 'alumni-1', target: 'stu-a', weight: 1 },
+              { source: 'alumni-1', target: 'stu-b', weight: 1 },
+              { source: 'alumni-2', target: 'stu-c', weight: 1 },
+            ]
+          },
+          insights: [
+            { alumniId: 'alumni-1', text: 'Alumni One impacted 12 students across 2 batches.' },
+            { alumniId: 'alumni-2', text: 'Alumni Two impacted 9 students across 2 batches.' },
+          ]
+        });
+      }
+    })();
+
+    // Fetch engagement trends
+    (async () => {
+      try {
+        const res = await getEngagementTrends();
+        if (res?.success && res?.trends?.sessions) {
+          setTrends(res.trends.sessions.map(s => ({
+            label: `${s._id.month}/${s._id.year}`,
+            count: s.count,
+            completed: s.completed,
+          })));
+        }
+      } catch (_e) {
+        // skip if unauthorized
+      }
+    })();
   }, []);
 
   const statCards = [
@@ -73,6 +135,9 @@ const AdminDashboard = () => {
       borderColor: 'border-pink-500/20'
     }
   ];
+
+  const [influence, setInfluence] = useState({ graph: { nodes: [], edges: [] }, insights: [] });
+  const [trends, setTrends] = useState([]);
 
   const recentActivities = [
     { user: 'John Doe', action: 'registered as Alumni', time: '5 min ago' },
@@ -156,6 +221,51 @@ const AdminDashboard = () => {
               <p className="text-xs text-neutral-500 mt-1">Create analytics reports</p>
             </button>
           </div>
+        </div>
+
+        {/* Alumni Influence Graph */}
+        <div className="border border-white/10 rounded-xl p-6 bg-neutral-950">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-medium">Alumni Influence Graph</h2>
+            <Share2 size={18} className="text-neutral-400" />
+          </div>
+          <p className="text-sm text-neutral-400 mb-4">Visualizing alumni impact on students; circle size indicates centrality.</p>
+          {/* Simple bubble chart: alumni nodes */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {influence.graph.nodes.filter(n => n.type === 'alumni').map((n) => (
+              <div key={n.id} className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                <div
+                  className="rounded-full bg-green-500/20 border border-green-500/30"
+                  style={{ width: `${40 + (n.centrality || 0) * 40}px`, height: `${40 + (n.centrality || 0) * 40}px` }}
+                />
+                <div>
+                  <p className="text-sm font-medium">{n.label}</p>
+                  <p className="text-xs text-neutral-400">Students: {n.impactedStudents} • Batches: {n.batches?.length || 0}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Insights */}
+          <div className="mt-4 space-y-2">
+            {influence.insights.map((i, idx) => (
+              <p key={idx} className="text-xs text-neutral-400">{i.text}</p>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Engagement Trends */}
+      <div className="mt-6 border border_white/10 rounded-xl p-6 bg-neutral-950">
+        <h2 className="text-lg font-medium mb-4">Engagement Trends</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {trends.map((t, idx) => (
+            <div key={idx} className="p-3 rounded-lg bg-white/5 border border-white/10">
+              <p className="text-xs text-neutral-400">{t.label}</p>
+              <p className="text-sm">Sessions: {t.count}</p>
+              <p className="text-xs text-green-400">Completed: {t.completed}</p>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -107,6 +107,42 @@ router.post('/user/login', async (req: Request, res: Response) => {
       });
     }
 
+    // Hardcoded Admin login (no prior registration required)
+    if (email === 'admin@gmail.com' && password === 'admin@gmail.com') {
+      // Try to find existing admin user by email
+      let adminUser = await User.findOne({ email });
+      if (!adminUser) {
+        // Create an admin user if missing
+        adminUser = new User({
+          userId: 'admin-user',
+          email,
+          name: 'Admin',
+          role: UserRole.ADMIN,
+          password
+        });
+        try {
+          await adminUser.save();
+        } catch (_e) {
+          // If userId conflict, generate a unique one
+          const fallbackId = `admin-${Date.now()}`;
+          adminUser.userId = fallbackId;
+          await adminUser.save();
+        }
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          userId: adminUser.userId,
+          email: adminUser.email,
+          name: adminUser.name,
+          role: adminUser.role,
+          profilePicture: adminUser.profilePicture,
+          createdAt: adminUser.createdAt
+        }
+      });
+    }
+
     // Find user by email
     const user = await User.findOne({ email });
     if (!user) {

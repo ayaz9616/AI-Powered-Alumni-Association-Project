@@ -67,4 +67,10 @@ export const jobsAPI = {
 // Health check
 export const healthCheck = () => api.get('/api/health');
 
+// Donation API
+export const donationAPI = {
+  createOrder: (data) => api.post(`/api/donations/order`, data),
+  verifyPayment: (data) => api.post(`/api/donations/verify`, data),
+};
+
 export default api;

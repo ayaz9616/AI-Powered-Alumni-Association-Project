@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getUserProfile } from '../lib/authManager';
-import { getAllJobs } from '../services/mentorshipApi';
+import { getAllJobs, markJobInterest } from '../services/mentorshipApi';
 
 const inputClass =
   "w-full bg-black text-white caret-green-400 " +
@@ -81,6 +81,12 @@ function StudentJobs() {
           b.toLowerCase().includes(filters.branch.toLowerCase())
         )
       ) {
+        return false;
+      }
+    }
+
+    if (job.eligibleBatches && job.eligibleBatches.length > 0) {
+      if (userProfile.batch && !job.eligibleBatches.includes(userProfile.batch)) {
         return false;
       }
     }
@@ -265,25 +271,21 @@ function StudentJobs() {
               )}
 
               <div className="flex gap-3 pt-6 border-t border-white/10">
-                {selectedJob.jobLink ? (
-                  <a
-                    href={selectedJob.jobLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 text-center bg-gradient-to-r from-green-500 to-green-600 rounded-full py-2.5 font-medium hover:opacity-90 transition"
-                  >
-                    Apply Now
-                  </a>
-                ) : (
-                  <button
-                    className="flex-1 bg-gradient-to-r from-green-500 to-green-600 rounded-full py-2.5 font-medium hover:opacity-90 transition"
-                    onClick={() =>
-                      alert('Contact the alumni who posted this job for application details')
+                <button
+                  className="flex-1 bg-gradient-to-r from-green-500 to-green-600 rounded-full py-2.5 font-medium hover:opacity-90 transition"
+                  onClick={async () => {
+                    try {
+                      await markJobInterest(selectedJob.jobId);
+                      alert('Interest recorded! The alumni will see your profile.');
+                    } catch (err) {
+                      const msg = err?.response?.data?.error || 'Failed to record interest';
+                      const reasons = err?.response?.data?.reasons;
+                      alert(reasons && reasons.length > 0 ? `${msg}:\n- ${reasons.join('\n- ')}` : msg);
                     }
-                  >
-                    Express Interest
-                  </button>
-                )}
+                  }}
+                >
+                  Express Interest
+                </button>
                 <button
                   onClick={() => setSelectedJob(null)}
                   className="flex-1 rounded-full border border-white/10 py-2.5 text-white hover:bg-white/5 transition"

@@ -22,6 +22,7 @@ import CommunityPastEvents from './components/community/CommunityPastEvents';
 import CommunityStudentsRequest from './components/community/CommunityStudentsRequest';
 import AlumniDirectory from './components/alumni/AlumniDirectory';
 import AlumniProfilePage from './components/alumni/AlumniProfile';
+import Donation from './components/Donation';
 import { getUserProfile, isAuthenticated, isProfileComplete, logout } from './lib/authManager';
 import './App.css';
 
@@ -52,6 +53,9 @@ function AppContent({ userProfile, onLogout }) {
             ? <Navigate to="/" replace />
             : <Auth onAuthSuccess={() => window.location.reload()} />
         } />
+
+        {/* Donation (Public) */}
+        <Route path="/donate" element={<Donation />} />
 
         {/* Onboarding Route */}
         <Route path="/onboarding" element={

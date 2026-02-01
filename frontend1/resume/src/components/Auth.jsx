@@ -48,7 +48,12 @@ function Auth({ onAuthSuccess }) {
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError(err.message || 'Login failed. Please try again.');
+      const msg = (err && err.message) ? err.message : '';
+      if (msg.includes('Failed to fetch')) {
+        setError('Backend unreachable. Please start the API server at http://localhost:8000 and try again.');
+      } else {
+        setError(msg || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

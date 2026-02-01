@@ -151,6 +151,7 @@ function Navbar({ userProfile, onLogout }) {
               <Link to="/alumni-directory" className="hover:text-white transition">Alumni</Link>
             </>
           )}
+          <Link to="/donate" className="hover:text-white transition">Donate</Link>
         </div>
 
         {/* Desktop User / Auth */}
@@ -185,6 +186,7 @@ function Navbar({ userProfile, onLogout }) {
           onClick={() => setOpen(!open)}
           className="md:hidden flex flex-col gap-1.5"
         >
+                <Link to="/donate" onClick={closeMenu}>Donate</Link>
           <span className={`h-[2px] w-6 bg-white transition ${open && "rotate-45 translate-y-[6px]"}`} />
           <span className={`h-[2px] w-6 bg-white transition ${open && "opacity-0"}`} />
           <span className={`h-[2px] w-6 bg-white transition ${open && "-rotate-45 -translate-y-[6px]"}`} />
@@ -227,6 +229,9 @@ function Navbar({ userProfile, onLogout }) {
               >
                 Get Started
               </Link>
+            )}
+            {!userProfile && (
+              <Link to="/donate" onClick={closeMenu} className="mt-2 w-full bg-neutral-800 text-white py-2 rounded-lg text-center hover:bg-neutral-700 transition">Donate</Link>
             )}
           </div>
         </div>

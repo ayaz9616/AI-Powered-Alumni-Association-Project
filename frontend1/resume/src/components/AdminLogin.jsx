@@ -2,29 +2,48 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { loginUser } from '../services/mentorshipApi';
+import { setUserProfile } from '../lib/authManager';
 
 const ADMIN_CREDENTIALS = {
-  username: 'admin',
-  password: 'admin123'
+  email: 'admin@gmail.com',
+  password: 'admin@gmail.com'
 };
 
 const AdminLogin = () => {
   const navigate = useNavigate();
   const [credentials, setCredentials] = useState({
-    username: '',
+    email: '',
     password: ''
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (credentials.username === ADMIN_CREDENTIALS.username && 
-        credentials.password === ADMIN_CREDENTIALS.password) {
-      localStorage.setItem('adminAuth', 'true');
-      toast.success('Login successful!');
-      navigate('/admin/dashboard');
-    } else {
-      toast.error('Invalid credentials!');
+    try {
+      if (credentials.email === ADMIN_CREDENTIALS.email && credentials.password === ADMIN_CREDENTIALS.password) {
+        // Call backend login to ensure admin user exists and capture userId
+        try {
+          const res = await loginUser(credentials.email, credentials.password);
+          if (res?.success && res?.data) {
+            setUserProfile({
+              userId: res.data.userId,
+              role: res.data.role,
+              name: res.data.name,
+              email: res.data.email,
+            });
+          }
+        } catch (_e) {
+          // Continue with local admin auth even if backend call fails
+        }
+
+        localStorage.setItem('adminAuth', 'true');
+        toast.success('Admin login successful');
+        navigate('/admin/dashboard');
+      } else {
+        toast.error('Invalid credentials!');
+      }
+    } catch (err) {
+      toast.error('Login failed');
     }
   };
 
@@ -55,23 +74,23 @@ const AdminLogin = () => {
           {/* Credentials Display */}
           <div className="mb-6 p-4 bg-neutral-900 border border-white/10 rounded-lg">
             <p className="text-xs text-neutral-500 mb-2">Demo Credentials:</p>
-            <p className="text-sm text-neutral-300">Username: <span className="text-green-400">admin</span></p>
-            <p className="text-sm text-neutral-300">Password: <span className="text-green-400">admin123</span></p>
+            <p className="text-sm text-neutral-300">Email: <span className="text-green-400">admin@gmail.com</span></p>
+            <p className="text-sm text-neutral-300">Password: <span className="text-green-400">admin@gmail.com</span></p>
           </div>
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-neutral-300 mb-2">
-                Username
+                Email
               </label>
               <div className="relative">
                 <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
                 <input
-                  type="text"
-                  value={credentials.username}
-                  onChange={(e) => setCredentials({...credentials, username: e.target.value})}
-                  placeholder="Enter username"
+                  type="email"
+                  value={credentials.email}
+                  onChange={(e) => setCredentials({...credentials, email: e.target.value})}
+                  placeholder="Enter email"
                   className="w-full bg-black border border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-white placeholder:text-neutral-500 focus:outline-none focus:border-green-500 transition"
                   required
                 />
