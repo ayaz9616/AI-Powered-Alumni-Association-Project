@@ -1,9 +1,28 @@
 services:
+  # Backend Node.js Service
   - type: web
-    name: resumate
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true
+    name: alumni-backend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd backend-node && npm ci && npm run build
+    startCommand: cd backend-node && npm start
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.11
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8000
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB_NAME
+        value: hacktopia
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
