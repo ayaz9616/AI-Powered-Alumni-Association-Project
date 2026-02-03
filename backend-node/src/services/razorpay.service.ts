@@ -7,7 +7,7 @@ const getKeys = () => {
   return { key_id, key_secret };
 };
 
-let client: Razorpay | null = null;
+let client: InstanceType<typeof Razorpay> | null = null;
 
 export const getRazorpayClient = () => {
   if (client) return client;
