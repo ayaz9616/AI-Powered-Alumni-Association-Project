@@ -1,4 +1,4 @@
-# 🎓 Alumni Hacktopia - AI-Powered Alumni Association Platform
+# 🎓 AI-Powered Alumni Mentorship & Job Matching Platform
 
 <div align="center">
 
